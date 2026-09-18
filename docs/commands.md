@@ -25,6 +25,7 @@ Most scripts accept:
 
 | You need to… | Run | Key output |
 |---|---|---|
+| **Collect a compact customer quota package for WE → NE/GWC analysis** | `Export-RegionalQuotaRawData.ps1 [-SubscriptionCsv …]` | One normalized quota CSV for all supported services, primary-region used SKUs, regional SKU/AZ availability, physical zone mappings, summary, optional errors, and a ZIP |
 | **Discover which SKUs are actually in use** (no guessing) | `Get-UsedSkus.ps1 [-SubscriptionCsv …] [-Top N]` | `used-skus-…csv` (VM/VMSS/AKS counts + family + zones) + `capacity-config.json` |
 | **Complete sight: every family's enablement + quota + in-use** | `Get-SkuCatalogue.ps1 [-SubscriptionCsv …] [-OnlyRelevant]` | `sku-catalogue-…csv` (per-family coverage + summed quota + InUse) + `regional-totals-…csv` (Total Regional & Spot vCPUs per sub) |
 | Check if SKU(s) are regional + zonal enabled across subs | `Scan-SkuEnablement.ps1 -Location <r> -Skus <list> [-SubscriptionCsv …]` | `<sku>_reg` = Enabled/BLOCKED, `<sku>_zones` = open logical zones |
@@ -52,6 +53,43 @@ Most scripts accept:
 | Render a visual HTML dashboard | `New-CapacityDashboard.ps1 [-Location <r>] [-SecondaryRegion <r>]` | self-contained `capacity-dashboard-…html` |
 | **Try it offline — generate synthetic demo data** (no Azure access) | `New-DemoDataset.ps1 [-OutDir <path>] [-Company <name>] [-Seed <int>]` | a full set of fictional CSVs you can render with the dashboard |
 | Produce a full status report | `New-CapacityReport.ps1 [-ConfigPath capacity-config.json] -Location <r> [-SecondaryRegion <r> -IncludeAks -IncludeZonal -IncludeCatalogue -IncludeInventory -IncludeQuotaGroups -Dashboard -EnablementRequest -EvaluateRegions <list>]` | combined CSV + Markdown (+ HTML / request / region compare / zonal resilience / full SKU catalogue / inventory / quota groups) |
+
+## Compact customer raw-data package
+
+Use this when a customer should run one command across every enabled subscription in their current
+tenant and send the resulting ZIP for offline comparison:
+
+```powershell
+.\scripts\Export-RegionalQuotaRawData.ps1
+```
+
+The defaults model **West Europe** as the primary region, **North Europe** as the existing DR region,
+and **Germany West Central** as the target DR region. Override them when needed:
+
+```powershell
+.\scripts\Export-RegionalQuotaRawData.ps1 `
+    -PrimaryRegion westeurope `
+    -ExistingDrRegion northeurope `
+    -TargetDrRegion germanywestcentral `
+    -OutDir .\output\customer-quota-raw
+```
+
+The script is read-only and restores the original Azure CLI subscription after collection. It
+creates a compact package containing:
+
+- `regional-quota-data.csv` — normalized usage, limit and available values for Compute, Network,
+  App Service, Storage, Azure SQL and Cosmos DB/informational inventory.
+- `primary-region-used-skus.csv` — region-filtered VM, VMSS and AKS node-pool inventory with SKU,
+  quota family, instance count and configured availability zones.
+- `sku-availability-by-region.csv` — subscription-specific regional and logical-zone availability
+  for the discovered SKUs.
+- `availability-zone-mappings.csv` — logical-to-physical zone mappings per subscription and region.
+- `collection-summary.json` and, when required, `collection-errors.csv`.
+- A ZIP beside the output folder unless `-SkipArchive` is supplied.
+
+Azure has no single all-services quota endpoint. This wrapper invokes the toolkit's service-specific
+read-only collectors and consolidates their output; informational rows are marked so they are not
+mistaken for adjustable quota.
 
 ## The orchestrator: `New-CapacityReport.ps1`
 
